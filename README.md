@@ -1,30 +1,52 @@
-# OpenAPI-to-Apidog documentation POC
+# Orders API documentation laboratory
 
-This proof of concept shows that a rich OpenAPI contract can be the single source of truth for useful API documentation. It uses synthetic data and intentionally has no server, database, credentials, integration, or CI workflow.
+A deliberately small ASP.NET Core API for learning how C# models become OpenAPI documentation and how that documentation can be exercised manually in Apidog. It uses only synthetic, in-memory data—there is no database, authentication, Docker, deployment setup, or Apidog automation.
 
-## Architecture decision
+## Prerequisites and reproducibility
 
-[`openapi.yaml`](./openapi.yaml) is the canonical API contract. It describes the API, documentation, examples, validation rules, and reusable models in one versioned file. Apidog imports that contract to present interactive documentation; it is not edited as a competing source of truth.
+Install the .NET 10 SDK. This repository records SDK `10.0.400` in [`global.json`](./global.json); `dotnet --version` should report that version or a compatible patch. The SDK is machine software. NuGet dependencies are declared in the project files and downloaded automatically into your local NuGet cache by `dotnet restore`; do not install them globally.
 
-The focused domain is an Orders API with `GET /orders/{orderId}` and `POST /orders`. The reusable `Order`, `CreateOrderRequest`, `Money`, and `Problem` schemas ensure that nested data, money, and errors remain structured rather than being flattened into vague strings.
+## Run locally
 
-## Demonstrate the documentation update
+```sh
+dotnet restore ApiDocsPoc.slnx
+dotnet run --project src/OrdersApi --urls http://127.0.0.1:5079
+```
 
-1. Create an Apidog project and import [`examples/openapi-before.yaml`](./examples/openapi-before.yaml).
-2. Inspect the `Order` schema and the two endpoints.
-3. Re-import [`openapi.yaml`](./openapi.yaml), choosing the update/overwrite option for existing endpoints and schemas.
-4. Confirm that `Order.status` now appears as a required field with its lifecycle description, four allowed values, and a `confirmed` example.
+With the API running, use these URLs:
 
-[`examples/openapi-after.yaml`](./examples/openapi-after.yaml) is the compact snapshot of that same meaningful change. `openapi.yaml` is richer and remains the source of truth for all future changes.
+- API base: `http://127.0.0.1:5079`
+- Swagger UI: `http://127.0.0.1:5079/swagger`
+- OpenAPI document: `http://127.0.0.1:5079/swagger/v1/swagger.json`
+- Seed order: `GET http://127.0.0.1:5079/orders/84f5e6b0-b2bd-4dc4-8ab1-5b105c0986c8`
 
-## What to verify in Apidog
+Create an order:
 
-- Both endpoints display their summaries, descriptions, parameters, request bodies, and success responses.
-- `Money` and `OrderItem` expand as reusable object schemas wherever referenced.
-- The request and response examples are visible and understandable without reading source code.
-- `400`, `404`, and `409` responses expose reusable `Problem` details and concrete examples.
-- Re-importing the current contract visibly updates the `Order` documentation with `status`.
+```sh
+curl -i -X POST http://127.0.0.1:5079/orders \
+  -H 'Content-Type: application/json' \
+  -d '{"customerId":"cus_newcustomer","items":[{"sku":"notebook-a5","name":"A5 Notebook","quantity":2,"unitPrice":{"amount":2499,"currency":"ZAR"}}]}'
+```
 
-## Later automation
+Run the compact integration suite with `dotnet test ApiDocsPoc.slnx`.
 
-The next step—not implemented here—is a CI job that validates `openapi.yaml` and imports it into the chosen Apidog project using securely stored credentials. It should report import failures and never make Apidog the primary copy of the contract.
+## Architecture
+
+The API is controller-based to keep HTTP behaviour, validation, and generated metadata easy to inspect. `OrderStore` is a singleton in-memory store seeded with one order. Data-annotation validation produces standard problem responses for invalid requests; unknown orders return `ProblemDetails` with HTTP 404.
+
+`Order`, `OrderItem`, and `Money` are structured C# objects, while `OrderStatus` is an enum. Swagger is generated from the controllers, response metadata, validation attributes, and XML comments at runtime. Swashbuckle is the only third-party dependency because it supplies the requested Swagger UI; its version is declared in the API project.
+
+The pre-existing root [`openapi.yaml`](./openapi.yaml) and the files in [`examples/`](./examples/) are static before/after documentation snapshots from the earlier spec-first experiment. For this C# phase, use the generated `/swagger/v1/swagger.json` document when testing the local API.
+
+## Use with Apidog
+
+1. Start the API using the command above and open the OpenAPI document URL locally to confirm it responds.
+2. In Apidog, create or open a project, then choose **Import Data** → **OpenAPI/Swagger**.
+3. Import from a URL using `http://127.0.0.1:5079/swagger/v1/swagger.json` (or upload a saved copy of that document).
+4. Set the Apidog environment base URL to `http://127.0.0.1:5079` and send the seeded `GET` request or the sample `POST` request.
+
+Apidog must run on the same Mac, or otherwise have network access to the Mac. A remote/cloud service cannot reach `127.0.0.1`; use Apidog’s desktop client/local agent or make the API reachable on your LAN only when you deliberately choose to do so. No Apidog credentials or automation are stored here.
+
+## Later, deliberately excluded
+
+CI validation, import automation, credentials, code generation, persistence, containerisation, and production deployment are deferred. The later automation path is to validate the generated OpenAPI document and import it using credentials held by CI—not to maintain a second documentation source.
