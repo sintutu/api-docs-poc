@@ -1,0 +1,266 @@
+openapi: 3.1.0
+info:
+  title: Orders API
+  version: 1.1.0
+  description: |
+    A synthetic order-management API used to demonstrate how a rich OpenAPI
+    contract becomes useful, interactive documentation in Apidog.
+servers:
+  - url: https://api.example.test/v1
+    description: Synthetic demonstration environment
+tags:
+  - name: Orders
+    description: Create and retrieve customer orders.
+paths:
+  /orders/{orderId}:
+    get:
+      tags: [Orders]
+      summary: Retrieve an order
+      description: Returns the complete order, including its lifecycle status and monetary total.
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              examples:
+                confirmedOrder:
+                  summary: A confirmed order awaiting fulfilment
+                  value:
+                    id: 84f5e6b0-b2bd-4dc4-8ab1-5b105c0986c8
+                    customerId: cus_9f73b84d
+                    status: confirmed
+                    total:
+                      amount: 7998
+                      currency: ZAR
+                    createdAt: '2026-09-12T09:30:00Z'
+        '404':
+          $ref: '#/components/responses/OrderNotFound'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+  /orders:
+    post:
+      tags: [Orders]
+      summary: Create an order
+      description: Creates an order for a customer. New orders start in the `pending` status.
+      operationId: createOrder
+      requestBody:
+        required: true
+        description: Customer and priced items to include in the new order.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+            examples:
+              twoItemOrder:
+                summary: An order with two priced items
+                value:
+                  customerId: cus_9f73b84d
+                  items:
+                    - sku: notebook-a5
+                      name: A5 Notebook
+                      quantity: 2
+                      unitPrice:
+                        amount: 2499
+                        currency: ZAR
+      responses:
+        '201':
+          description: Order created.
+          headers:
+            Location:
+              description: Canonical URL of the newly created order.
+              schema:
+                type: string
+                format: uri
+              example: https://api.example.test/v1/orders/84f5e6b0-b2bd-4dc4-8ab1-5b105c0986c8
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              examples:
+                pendingOrder:
+                  summary: The newly created order
+                  value:
+                    id: 84f5e6b0-b2bd-4dc4-8ab1-5b105c0986c8
+                    customerId: cus_9f73b84d
+                    status: pending
+                    total:
+                      amount: 4998
+                      currency: ZAR
+                    createdAt: '2026-09-12T09:30:00Z'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '409':
+          $ref: '#/components/responses/ConflictingOrder'
+components:
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      description: UUID assigned to the order when it is created.
+      schema:
+        type: string
+        format: uuid
+      example: 84f5e6b0-b2bd-4dc4-8ab1-5b105c0986c8
+  responses:
+    InvalidRequest:
+      description: The request is syntactically valid JSON but fails API validation.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.test/problems/validation-error
+            title: Validation failed
+            status: 400
+            detail: items must contain at least one item.
+            instance: /v1/orders
+            errors:
+              - field: items
+                message: Add at least one order item.
+    OrderNotFound:
+      description: No order exists for the supplied identifier.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.test/problems/order-not-found
+            title: Order not found
+            status: 404
+            detail: No order exists with ID 84f5e6b0-b2bd-4dc4-8ab1-5b105c0986c8.
+            instance: /v1/orders/84f5e6b0-b2bd-4dc4-8ab1-5b105c0986c8
+    ConflictingOrder:
+      description: The submitted order duplicates an order that is already being processed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://api.example.test/problems/duplicate-order
+            title: Duplicate order
+            status: 409
+            detail: An identical order for this customer was submitted recently.
+            instance: /v1/orders
+  schemas:
+    Order:
+      type: object
+      description: A completed record of a customer order and its current lifecycle state.
+      required: [id, customerId, status, total, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Immutable identifier assigned by the API.
+          example: 84f5e6b0-b2bd-4dc4-8ab1-5b105c0986c8
+        customerId:
+          type: string
+          description: Identifier of the customer who placed the order.
+          example: cus_9f73b84d
+        status:
+          type: string
+          description: Current lifecycle state. A cancelled order will not be fulfilled.
+          enum:
+          - pending
+          - confirmed
+          - fulfilled
+          - cancelled
+          - returned
+          example: confirmed
+        total:
+          $ref: '#/components/schemas/Money'
+        createdAt:
+          type: string
+          format: date-time
+          description: Time at which the API accepted the order, in UTC.
+          example: '2026-09-12T09:30:00Z'
+    CreateOrderRequest:
+      type: object
+      description: The customer and line items required to create an order.
+      required: [customerId, items]
+      properties:
+        customerId:
+          type: string
+          description: Identifier of the customer placing the order.
+          example: cus_9f73b84d
+        items:
+          type: array
+          description: One or more items to purchase. Totals are calculated from these prices.
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderItem'
+    OrderItem:
+      type: object
+      description: A purchasable item and the agreed price for one unit.
+      required: [sku, name, quantity, unitPrice]
+      properties:
+        sku:
+          type: string
+          description: Merchant stock-keeping unit.
+          example: notebook-a5
+        name:
+          type: string
+          description: Customer-facing item name captured at purchase time.
+          example: A5 Notebook
+        quantity:
+          type: integer
+          minimum: 1
+          description: Number of units ordered.
+          example: 2
+        unitPrice:
+          $ref: '#/components/schemas/Money'
+    Money:
+      type: object
+      description: A monetary value expressed in minor currency units to avoid floating-point ambiguity.
+      required: [amount, currency]
+      properties:
+        amount:
+          type: integer
+          minimum: 0
+          description: Amount in the minor unit of `currency`; for ZAR, 2499 represents R24.99.
+          example: 2499
+        currency:
+          type: string
+          description: ISO 4217 three-letter currency code.
+          enum: [ZAR, USD, EUR]
+          example: ZAR
+    Problem:
+      type: object
+      description: A machine-readable error response based on RFC 7807 problem details.
+      required: [type, title, status, detail]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Stable URI identifying the category of problem.
+        title:
+          type: string
+          description: Short human-readable summary of the problem category.
+        status:
+          type: integer
+          description: HTTP status code generated by the API.
+          example: 400
+        detail:
+          type: string
+          description: Human-readable explanation of this specific occurrence.
+        instance:
+          type: string
+          description: URI of the request or resource that produced the problem.
+        errors:
+          type: array
+          description: Field-level validation failures, when applicable.
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+                description: Request field that failed validation.
+              message:
+                type: string
+                description: Explanation of the validation failure.

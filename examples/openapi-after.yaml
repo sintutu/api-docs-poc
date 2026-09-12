@@ -1,0 +1,92 @@
+openapi: 3.1.0
+info:
+  title: Orders API
+  version: 1.1.0
+  description: Updated contract that documents the order lifecycle status.
+paths:
+  /orders/{orderId}:
+    get:
+      summary: Retrieve an order
+      operationId: getOrder
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Order found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+  /orders:
+    post:
+      summary: Create an order
+      operationId: createOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+components:
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Order:
+      type: object
+      description: A completed record of a customer order and its current lifecycle state.
+      required: [id, customerId, status, total, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        customerId: { type: string, example: cus_9f73b84d }
+        status:
+          type: string
+          description: Current lifecycle state. A cancelled order will not be fulfilled.
+          enum: [pending, confirmed, fulfilled, cancelled]
+          example: confirmed
+        total: { $ref: '#/components/schemas/Money' }
+        createdAt: { type: string, format: date-time }
+    CreateOrderRequest:
+      type: object
+      description: The customer and line items required to create an order.
+      required: [customerId, items]
+      properties:
+        customerId: { type: string, example: cus_9f73b84d }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/OrderItem' }
+    OrderItem:
+      type: object
+      required: [sku, name, quantity, unitPrice]
+      properties:
+        sku: { type: string, example: notebook-a5 }
+        name: { type: string, example: A5 Notebook }
+        quantity: { type: integer, minimum: 1, example: 2 }
+        unitPrice: { $ref: '#/components/schemas/Money' }
+    Money:
+      type: object
+      description: A monetary value in minor currency units.
+      required: [amount, currency]
+      properties:
+        amount: { type: integer, minimum: 0, example: 2499 }
+        currency: { type: string, enum: [ZAR, USD, EUR], example: ZAR }
+    Problem:
+      type: object
+      description: A machine-readable API error.
+      required: [type, title, status, detail]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
